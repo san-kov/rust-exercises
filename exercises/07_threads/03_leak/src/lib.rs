@@ -3,10 +3,23 @@
 //  sum each half in a separate thread.
 //  Hint: check out `Vec::leak`.
 
-use std::thread;
-
+use std::thread::spawn;
+    
 pub fn sum(v: Vec<i32>) -> i32 {
-    todo!()
+    let static_ref: &'static mut &mut [i32] = Box::leak(Box::new(v.leak()));
+    let half = static_ref.len() / 2;
+
+    let left = &static_ref[0..half];
+    let right = &static_ref[half..];
+
+    let sum_right: i32 = spawn(|| {
+        right.iter().sum()
+    }).join().unwrap();
+    
+    let sum_left: i32 = left.iter().sum();
+    
+    sum_left + sum_right
+
 }
 
 #[cfg(test)]
