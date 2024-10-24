@@ -4,26 +4,24 @@
 ///  the testing code too, yes).
 ///
 /// Can you understand the sequence of events that can lead to a deadlock?
-use std::sync::mpsc;
 
 pub struct Message {
     payload: String,
-    response_channel: mpsc::Sender<Message>,
+    response_channel: tokio::sync::mpsc::Sender<Message>,
 }
 
 /// Replies with `pong` to any message it receives, setting up a new
 /// channel to continue communicating with the caller.
-pub async fn pong(mut receiver: mpsc::Receiver<Message>) {
+pub async fn pong(mut receiver: tokio::sync::mpsc::Receiver<Message>) {
     loop {
-        if let Ok(msg) = receiver.recv() {
+        if let Some(msg) = receiver.recv().await {
             println!("Pong received: {}", msg.payload);
-            let (sender, new_receiver) = mpsc::channel();
-            msg.response_channel
+            let (sender, new_receiver) = tokio::sync::mpsc::channel::<Message>(1);
+            let _ = msg.response_channel
                 .send(Message {
                     payload: "pong".into(),
                     response_channel: sender,
-                })
-                .unwrap();
+                }).await;
             receiver = new_receiver;
         }
     }
@@ -32,22 +30,22 @@ pub async fn pong(mut receiver: mpsc::Receiver<Message>) {
 #[cfg(test)]
 mod tests {
     use crate::{pong, Message};
-    use std::sync::mpsc;
 
     #[tokio::test]
     async fn ping() {
-        let (sender, receiver) = mpsc::channel();
-        let (response_sender, response_receiver) = mpsc::channel();
-        sender
-            .send(Message {
+        let (sender, receiver) = tokio::sync::mpsc::channel::<Message>(1);
+        let (response_sender, mut response_receiver) = tokio::sync::mpsc::channel::<Message>(1);
+        let var_name = Message {
                 payload: "pong".into(),
                 response_channel: response_sender,
-            })
-            .unwrap();
+            };
+        let _ = sender
+            .send(var_name).await;
 
         tokio::spawn(pong(receiver));
 
-        let answer = response_receiver.recv().unwrap().payload;
+        let recv = response_receiver.recv().await;
+        let answer = recv.unwrap().payload;
         assert_eq!(answer, "pong");
     }
 }
